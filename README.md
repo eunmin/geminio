@@ -4,7 +4,7 @@ http-kit(http://http-kit.org) with consul(https://www.consul.io).
 
 ## Usage
 
-```
+```clojure
 (require '[geminio.core :as http])
 
 (def lb (http/create-load-balancer {:agent-host "localhost"
