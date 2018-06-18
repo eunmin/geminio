@@ -1,6 +1,7 @@
 (ns geminio.core
   (:refer-clojure :exclude [get])
-  (:require [org.httpkit.client :as http])
+  (:require [org.httpkit.client :as http]
+            [clojure.string :refer [split]])
   (:import [com.ecwid.consul.v1
             ConsulClient
             QueryParams
@@ -129,7 +130,7 @@
 (defn- create-server [host port]
   (Server. host port))
 
-(defn- get-server-list [^String agent-host ^String datacenter ^String service-name]
+(defn- consul-server-list [^String agent-host ^String datacenter ^String service-name]
   (let [^ConsulClient client (ConsulClient. agent-host)
         ^QueryParams query-params (.build (.setDatacenter (QueryParams$Builder/builder) datacenter))]
     (map
@@ -140,17 +141,23 @@
 (defn- create-server-list [agent-host datacenter service-name]
   (proxy [ServerList] []
     (getServerList []
-      (get-server-list agent-host datacenter service-name))
+      (consul-server-list agent-host datacenter service-name))
     (getInitialListOfServers []
-      (get-server-list agent-host datacenter service-name))
+      (consul-server-list agent-host datacenter service-name))
     (getUpdatedListOfServers []
-      (get-server-list agent-host datacenter service-name))))
+      (consul-server-list agent-host datacenter service-name))))
 
 (defn create-load-balancer [{:keys [agent-host datacenter service-name] :as opts}]
   (.buildDynamicServerListLoadBalancerWithUpdater
    (doto (LoadBalancerBuilder/newBuilder)
      (.withServerListUpdater (PollingServerListUpdater. (create-config opts)))
      (.withDynamicServerList (create-server-list agent-host datacenter service-name)))))
+
+(defn create-fixed-server-list-load-balancer [server-list]
+  (.buildFixedServerListLoadBalancer (LoadBalancerBuilder/newBuilder)
+                                     (map #(let [[ip port] (split % #":")]
+                                             (create-server ip (Integer/parseInt (or port "80"))))
+                                          server-list)))
 
 (defn request [^ILoadBalancer lb {:keys [scheme path retry] :as opts :or {scheme :http
                                                                           retry {:same-server 0
